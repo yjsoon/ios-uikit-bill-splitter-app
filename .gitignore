@@ -1,0 +1,10 @@
+# Xcode
+DerivedData/
+*.xcworkspace/xcuserdata/
+project.xcworkspace/xcuserdata/
+*.xcuserstate
+xcuserdata/
+
+# User-specific
+*.swp
+.DS_Store
