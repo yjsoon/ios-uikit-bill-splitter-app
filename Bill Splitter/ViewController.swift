@@ -1,33 +1,6 @@
 import UIKit
 
 final class ViewController: UIViewController, UITextFieldDelegate {
-    // MARK: - UI Elements
-    private let mainStackView = UIStackView()
-    private let titleLabel = UILabel()
-    private let billAmountTextField = UITextField()
-    private let taxControlsStackView = UIStackView()
-    private let gstRow = UIStackView()
-    private let serviceRow = UIStackView()
-    private let gstTitleLabel = UILabel()
-    private let serviceTitleLabel = UILabel()
-    private let gstSwitch = UISwitch()
-    private let serviceChargeSwitch = UISwitch()
-    private let partyStackView = UIStackView()
-    private let partySizeLabel = UILabel()
-    private let partySizeStepper = UIStepper()
-    private let resultsContainerView = UIView()
-    private let resultsStackView = UIStackView()
-    private let subtotalLabel = UILabel()
-    private let gstAmountLabel = UILabel()
-    private let serviceChargeAmountLabel = UILabel()
-    private let totalAmountLabel = UILabel()
-    private let perPersonLabel = UILabel()
-    private let roundingNoteLabel = UILabel()
-    private let buttonsStackView = UIStackView()
-    private let roundingButton = UIButton(type: .system)
-    private let resetButton = UIButton(type: .system)
-    private let shareButton = UIButton(type: .system)
-
     // MARK: - State
     private var billAmount: Decimal = 0
     private var partySize: Int = 2
@@ -36,13 +9,193 @@ final class ViewController: UIViewController, UITextFieldDelegate {
         didSet { updateRoundingButtonUI() }
     }
 
+    // MARK: - Header
+    private let titleLabel: UILabel = {
+        let label = UILabel()
+        label.text = "Eat Split"
+        label.font = .preferredFont(forTextStyle: .largeTitle)
+        label.textAlignment = .center
+        label.textColor = .systemPink
+        return label
+    }()
+
+    // MARK: - Bill Input
+    private lazy var billAmountTextField: UITextField = {
+        let textField = UITextField()
+        textField.placeholder = "Enter bill amount (SGD)"
+        textField.keyboardType = .decimalPad
+        textField.borderStyle = .none
+        textField.layer.cornerRadius = 12
+        textField.backgroundColor = .systemGray6
+        textField.textAlignment = .center
+        textField.font = .systemFont(ofSize: 28, weight: .semibold)
+        textField.delegate = self
+        textField.accessibilityLabel = "Bill amount in Singapore dollars"
+        textField.accessibilityHint = "Enter the total bill before taxes"
+        return textField
+    }()
+
+    // MARK: - Tax Controls
+    private lazy var serviceChargeSwitch: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = true
+        toggle.addTarget(self, action: #selector(taxSettingChanged), for: .valueChanged)
+        toggle.accessibilityLabel = "Service charge ten percent"
+        toggle.accessibilityHint = "Toggle service charge on or off"
+        return toggle
+    }()
+
+    private lazy var gstSwitch: UISwitch = {
+        let toggle = UISwitch()
+        toggle.isOn = true
+        toggle.addTarget(self, action: #selector(taxSettingChanged), for: .valueChanged)
+        toggle.accessibilityLabel = "GST nine percent tax"
+        toggle.accessibilityHint = "Toggle GST on or off"
+        return toggle
+    }()
+
+    private lazy var taxControlsStackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [
+            makeRow(title: "Service Charge (10%)", control: serviceChargeSwitch),
+            makeRow(title: "GST (9%)", control: gstSwitch)
+        ])
+        stackView.axis = .vertical
+        stackView.spacing = 16
+        return stackView
+    }()
+
+    // MARK: - Party Size
+    private let partySizeLabel: UILabel = {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: .headline)
+        label.textColor = .label
+        return label
+    }()
+
+    private lazy var partySizeStepper: UIStepper = {
+        let stepper = UIStepper()
+        stepper.minimumValue = 1
+        stepper.maximumValue = 20
+        stepper.stepValue = 1
+        stepper.value = Double(partySize)
+        stepper.addTarget(self, action: #selector(partySizeChanged), for: .valueChanged)
+        stepper.accessibilityLabel = "Number of people"
+        stepper.accessibilityHint = "Adjust how many people are splitting the bill"
+        return stepper
+    }()
+
+    private lazy var partyStackView: UIStackView = makeRow(label: partySizeLabel, control: partySizeStepper)
+
+    // MARK: - Rounding
+    private lazy var roundingButton: UIButton = {
+        let button = makeButton(title: "Rounding", backgroundColor: .systemBlue, titleColour: .white)
+        button.showsMenuAsPrimaryAction = true
+        button.accessibilityLabel = "Choose rounding option"
+        return button
+    }()
+
+    // MARK: - Results
+    private let subtotalLabel = ViewController.makeResultLabel(style: .body)
+    private let serviceChargeAmountLabel = ViewController.makeResultLabel(style: .body)
+    private let gstAmountLabel = ViewController.makeResultLabel(style: .body)
+
+    private let totalAmountLabel: UILabel = {
+        let label = ViewController.makeResultLabel(style: .title2, colour: .systemGreen)
+        label.accessibilityTraits.insert(.summaryElement)
+        return label
+    }()
+
+    private let perPersonLabel: UILabel = {
+        let label = ViewController.makeResultLabel(style: .title2, colour: .systemPink)
+        label.accessibilityTraits.insert(.summaryElement)
+        return label
+    }()
+
+    private let roundingNoteLabel: UILabel = {
+        let label = ViewController.makeResultLabel(style: .footnote, colour: .secondaryLabel)
+        label.numberOfLines = 0
+        label.isHidden = true
+        return label
+    }()
+
+    private lazy var resultsStackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [
+            subtotalLabel,
+            serviceChargeAmountLabel,
+            gstAmountLabel,
+            totalAmountLabel,
+            perPersonLabel,
+            roundingNoteLabel
+        ])
+        stackView.axis = .vertical
+        stackView.spacing = 8
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+
+    private lazy var resultsContainerView: UIView = {
+        let containerView = UIView()
+        containerView.backgroundColor = .secondarySystemBackground
+        containerView.layer.cornerRadius = 16
+        containerView.layer.borderWidth = 1
+        containerView.layer.borderColor = UIColor.separator.cgColor
+        containerView.addSubview(resultsStackView)
+        NSLayoutConstraint.activate([
+            resultsStackView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 16),
+            resultsStackView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -16),
+            resultsStackView.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
+            resultsStackView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -16)
+        ])
+        return containerView
+    }()
+
+    // MARK: - Action Buttons
+    private lazy var resetButton: UIButton = {
+        let button = makeButton(title: "Reset", backgroundColor: .systemGray5, titleColour: .label)
+        button.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
+        button.accessibilityLabel = "Reset bill"
+        return button
+    }()
+
+    private lazy var shareButton: UIButton = {
+        let button = makeButton(title: "Share", backgroundColor: .systemPink, titleColour: .white)
+        button.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
+        button.accessibilityLabel = "Share split"
+        return button
+    }()
+
+    private lazy var buttonsStackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [resetButton, shareButton])
+        stackView.axis = .horizontal
+        stackView.spacing = 12
+        stackView.distribution = .fillEqually
+        return stackView
+    }()
+
+    // MARK: - Main Layout
+    private lazy var mainStackView: UIStackView = {
+        let stackView = UIStackView(arrangedSubviews: [
+            titleLabel,
+            billAmountTextField,
+            taxControlsStackView,
+            partyStackView,
+            roundingButton,
+            resultsContainerView,
+            buttonsStackView
+        ])
+        stackView.axis = .vertical
+        stackView.spacing = 24
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        return stackView
+    }()
+
     // MARK: - Lifecycle
     override func viewDidLoad() {
         super.viewDidLoad()
         setupView()
         setupLayout()
-        setupAccessibility()
         setupKeyboardHandling()
+        updateRoundingButtonUI()
         updatePartySizeLabel()
         clearAllDisplays()
     }
@@ -53,120 +206,7 @@ final class ViewController: UIViewController, UITextFieldDelegate {
         view.layoutMargins = UIEdgeInsets(top: 36, left: 24, bottom: 24, right: 24)
         view.tintColor = .systemPink
         title = "Eat Split"
-
-        mainStackView.axis = .vertical
-        mainStackView.spacing = 24
-        mainStackView.translatesAutoresizingMaskIntoConstraints = false
-
-        titleLabel.text = "Eat Split"
-        titleLabel.font = UIFont.preferredFont(forTextStyle: .largeTitle)
-        titleLabel.textAlignment = .center
-        titleLabel.textColor = .systemPink
-
-        billAmountTextField.placeholder = "Enter bill amount (SGD)"
-        billAmountTextField.keyboardType = .decimalPad
-        billAmountTextField.borderStyle = .none
-        billAmountTextField.layer.cornerRadius = 12
-        billAmountTextField.backgroundColor = UIColor.systemGray6
-        billAmountTextField.textAlignment = .center
-        billAmountTextField.font = UIFont.systemFont(ofSize: 28, weight: .semibold)
-        billAmountTextField.delegate = self
-
-        taxControlsStackView.axis = .vertical
-        taxControlsStackView.spacing = 16
-
-        configureTaxRow(label: serviceTitleLabel, title: "Service Charge (10%)", toggle: serviceChargeSwitch, container: serviceRow)
-        configureTaxRow(label: gstTitleLabel, title: "GST (9%)", toggle: gstSwitch, container: gstRow)
-
-        gstSwitch.isOn = true
-        serviceChargeSwitch.isOn = true
-        gstSwitch.addTarget(self, action: #selector(taxSettingChanged), for: .valueChanged)
-        serviceChargeSwitch.addTarget(self, action: #selector(taxSettingChanged), for: .valueChanged)
-
-        partyStackView.axis = .horizontal
-        partyStackView.spacing = 12
-        partyStackView.alignment = .center
-
-        partySizeLabel.font = UIFont.preferredFont(forTextStyle: .headline)
-        partySizeLabel.textColor = .label
-
-        let partySpacer = UIView()
-        partySpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        partySizeStepper.minimumValue = 1
-        partySizeStepper.maximumValue = 20
-        partySizeStepper.stepValue = 1
-        partySizeStepper.value = Double(partySize)
-        partySizeStepper.addTarget(self, action: #selector(partySizeChanged), for: .valueChanged)
-
-        partyStackView.addArrangedSubview(partySizeLabel)
-        partyStackView.addArrangedSubview(partySpacer)
-        partyStackView.addArrangedSubview(partySizeStepper)
-
-        resultsContainerView.backgroundColor = .secondarySystemBackground
-        resultsContainerView.layer.cornerRadius = 16
-        resultsContainerView.layer.borderWidth = 1
-        resultsContainerView.layer.borderColor = UIColor.separator.cgColor
-        resultsContainerView.translatesAutoresizingMaskIntoConstraints = false
-
-        resultsStackView.axis = .vertical
-        resultsStackView.spacing = 8
-        resultsStackView.translatesAutoresizingMaskIntoConstraints = false
-
-        subtotalLabel.font = UIFont.preferredFont(forTextStyle: .body)
-        gstAmountLabel.font = UIFont.preferredFont(forTextStyle: .body)
-        serviceChargeAmountLabel.font = UIFont.preferredFont(forTextStyle: .body)
-
-        totalAmountLabel.font = UIFont.preferredFont(forTextStyle: .title2)
-        totalAmountLabel.textColor = .systemGreen
-
-        perPersonLabel.font = UIFont.preferredFont(forTextStyle: .title2)
-        perPersonLabel.textColor = .systemPink
-
-        roundingNoteLabel.font = UIFont.preferredFont(forTextStyle: .footnote)
-        roundingNoteLabel.textColor = .secondaryLabel
-        roundingNoteLabel.numberOfLines = 0
-        roundingNoteLabel.isHidden = true
-
-        resultsStackView.addArrangedSubview(subtotalLabel)
-        resultsStackView.addArrangedSubview(serviceChargeAmountLabel)
-        resultsStackView.addArrangedSubview(gstAmountLabel)
-        resultsStackView.addArrangedSubview(totalAmountLabel)
-        resultsStackView.addArrangedSubview(perPersonLabel)
-        resultsStackView.addArrangedSubview(roundingNoteLabel)
-
-        buttonsStackView.axis = .horizontal
-        buttonsStackView.spacing = 12
-        buttonsStackView.distribution = .fillEqually
-
-        styleButton(roundingButton, title: "Rounding", backgroundColor: .systemBlue, titleColour: .white)
-        styleButton(resetButton, title: "Reset", backgroundColor: .systemGray5, titleColour: .label)
-        styleButton(shareButton, title: "Share", backgroundColor: .systemPink, titleColour: .white)
-
-        roundingButton.showsMenuAsPrimaryAction = true
-        resetButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
-        shareButton.addTarget(self, action: #selector(shareTapped), for: .touchUpInside)
-
-        buttonsStackView.addArrangedSubview(roundingButton)
-        buttonsStackView.addArrangedSubview(resetButton)
-        buttonsStackView.addArrangedSubview(shareButton)
-
-        updateRoundingButtonUI()
-
-        let roundingControlStack = UIStackView(arrangedSubviews: [roundingButton])
-        roundingControlStack.axis = .horizontal
-        roundingControlStack.alignment = .fill
-        roundingControlStack.distribution = .fillEqually
-
-        [titleLabel,
-         billAmountTextField,
-         taxControlsStackView,
-         partyStackView,
-         roundingControlStack,
-         resultsContainerView,
-         buttonsStackView].forEach { mainStackView.addArrangedSubview($0) }
-
         view.addSubview(mainStackView)
-        resultsContainerView.addSubview(resultsStackView)
     }
 
     private func setupLayout() {
@@ -175,38 +215,12 @@ final class ViewController: UIViewController, UITextFieldDelegate {
             mainStackView.leadingAnchor.constraint(equalTo: margins.leadingAnchor),
             mainStackView.trailingAnchor.constraint(equalTo: margins.trailingAnchor),
             mainStackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            mainStackView.bottomAnchor.constraint(lessThanOrEqualTo: margins.bottomAnchor)
-        ])
+            mainStackView.bottomAnchor.constraint(lessThanOrEqualTo: margins.bottomAnchor),
 
-        NSLayoutConstraint.activate([
-            resultsStackView.leadingAnchor.constraint(equalTo: resultsContainerView.leadingAnchor, constant: 16),
-            resultsStackView.trailingAnchor.constraint(equalTo: resultsContainerView.trailingAnchor, constant: -16),
-            resultsStackView.topAnchor.constraint(equalTo: resultsContainerView.topAnchor, constant: 16),
-            resultsStackView.bottomAnchor.constraint(equalTo: resultsContainerView.bottomAnchor, constant: -16),
             roundingButton.heightAnchor.constraint(equalToConstant: 50),
             resetButton.heightAnchor.constraint(equalTo: roundingButton.heightAnchor),
-            shareButton.heightAnchor.constraint(equalTo: roundingButton.heightAnchor),
+            shareButton.heightAnchor.constraint(equalTo: roundingButton.heightAnchor)
         ])
-    }
-
-    private func setupAccessibility() {
-        billAmountTextField.accessibilityLabel = "Bill amount in Singapore dollars"
-        billAmountTextField.accessibilityHint = "Enter the total bill before taxes"
-
-        gstSwitch.accessibilityLabel = "GST nine percent tax"
-        gstSwitch.accessibilityHint = "Toggle GST on or off"
-        serviceChargeSwitch.accessibilityLabel = "Service charge ten percent"
-        serviceChargeSwitch.accessibilityHint = "Toggle service charge on or off"
-
-        partySizeStepper.accessibilityLabel = "Number of people"
-        partySizeStepper.accessibilityHint = "Adjust how many people are splitting the bill"
-
-        totalAmountLabel.accessibilityTraits.insert(.summaryElement)
-        perPersonLabel.accessibilityTraits.insert(.summaryElement)
-
-        roundingButton.accessibilityLabel = "Choose rounding option"
-        resetButton.accessibilityLabel = "Reset bill"
-        shareButton.accessibilityLabel = "Share split"
     }
 
     private func setupKeyboardHandling() {
@@ -215,35 +229,50 @@ final class ViewController: UIViewController, UITextFieldDelegate {
         view.addGestureRecognizer(tapGesture)
     }
 
-    private func configureTaxRow(label: UILabel, title: String, toggle: UISwitch, container: UIStackView) {
+    // MARK: - View Factories
+    private func makeRow(title: String, control: UIView) -> UIStackView {
+        let label = UILabel()
         label.text = title
-        label.font = UIFont.preferredFont(forTextStyle: .body)
+        label.font = .preferredFont(forTextStyle: .body)
+        return makeRow(label: label, control: control)
+    }
 
-        container.axis = .horizontal
-        container.alignment = .center
-        container.spacing = 12
-
+    private func makeRow(label: UILabel, control: UIView) -> UIStackView {
         let spacer = UIView()
         spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        container.addArrangedSubview(label)
-        container.addArrangedSubview(spacer)
-        container.addArrangedSubview(toggle)
-
-        taxControlsStackView.addArrangedSubview(container)
+        let row = UIStackView(arrangedSubviews: [label, spacer, control])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 12
+        return row
     }
 
-    private func styleButton(_ button: UIButton, title: String, backgroundColor: UIColor, titleColour: UIColor) {
-        button.setTitle(title, for: .normal)
-        button.setTitleColor(titleColour, for: .normal)
-        button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .headline)
-        button.backgroundColor = backgroundColor
-        button.layer.cornerRadius = 12
-        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 16, bottom: 12, right: 16)
+    private static func makeResultLabel(style: UIFont.TextStyle, colour: UIColor = .label) -> UILabel {
+        let label = UILabel()
+        label.font = .preferredFont(forTextStyle: style)
+        label.textColor = colour
+        return label
+    }
+
+    private func makeButton(title: String, backgroundColor: UIColor, titleColour: UIColor) -> UIButton {
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = title
+        configuration.baseBackgroundColor = backgroundColor
+        configuration.baseForegroundColor = titleColour
+        configuration.background.cornerRadius = 12
+        configuration.cornerStyle = .fixed
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
+            var attributes = attributes
+            attributes.font = .preferredFont(forTextStyle: .headline)
+            return attributes
+        }
+        return UIButton(configuration: configuration)
     }
 
     private func updateRoundingButtonUI() {
-        roundingButton.setTitle("Rounding: \(roundingStrategy.title)", for: .normal)
+        roundingButton.configuration?.title = "Rounding: \(roundingStrategy.title)"
         roundingButton.menu = makeRoundingMenu()
     }
 
